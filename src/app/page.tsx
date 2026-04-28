@@ -3,7 +3,9 @@
 import * as React from "react"
 import Image from "next/image"
 import { RiMoonLine, RiSunLine } from "@remixicon/react"
+import { toast } from "sonner"
 
+import { submitRegistration } from "@/app/actions"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -15,10 +17,10 @@ import {
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { INDUSTRIES, type IndustryValue, type Lang } from "@/lib/forum"
+import { submissionSchema } from "@/lib/schemas"
 import { cn } from "@/lib/utils"
 import Logo from "../../public/logo.png"
-
-type Lang = "uz" | "ru" | "en"
 
 const COPY = {
   uz: {
@@ -41,6 +43,13 @@ const COPY = {
       "Men taqdim etgan ma’lumotlarimning to‘g‘riligini tasdiqlayman va ularni qayta ishlashga rozilik bildiraman",
     submit: "Ariza yuborish",
     footer: "O‘zbekiston Milliy Iqtisodiy Hamkorlik Uyushmasi",
+    requiredMark: "majburiy maydon",
+    errorRequired: "Maydon to‘ldirilishi shart",
+    errorIndustries: "Kamida bitta yo‘nalishni tanlang",
+    errorConsent: "Davom etish uchun roziligingizni tasdiqlang",
+    successTitle: "Arizangiz qabul qilindi",
+    successDescription: "Tashkilotchilar siz bilan tez orada bog‘lanadi.",
+    serverError: "Yuborishda xatolik yuz berdi. Qayta urinib ko‘ring.",
   },
   ru: {
     langLabel: "Выбор языка",
@@ -62,6 +71,13 @@ const COPY = {
       "Подтверждаю достоверность предоставленных данных и даю согласие на их обработку",
     submit: "Отправить заявку",
     footer: "Ассоциация национального экономического сотрудничества Узбекистана",
+    requiredMark: "обязательное поле",
+    errorRequired: "Обязательное поле",
+    errorIndustries: "Выберите хотя бы одну отрасль",
+    errorConsent: "Подтвердите согласие, чтобы продолжить",
+    successTitle: "Заявка отправлена",
+    successDescription: "Организаторы свяжутся с вами в ближайшее время.",
+    serverError: "Не удалось отправить заявку. Попробуйте ещё раз.",
   },
   en: {
     langLabel: "Select language",
@@ -83,22 +99,15 @@ const COPY = {
       "I confirm that the information provided is accurate and I consent to data processing",
     submit: "Submit Application",
     footer: "Association of National Economic Cooperation of Uzbekistan",
+    requiredMark: "required field",
+    errorRequired: "This field is required",
+    errorIndustries: "Please select at least one industry",
+    errorConsent: "Please confirm your consent to continue",
+    successTitle: "Application submitted",
+    successDescription: "The organizers will be in touch shortly.",
+    serverError: "Something went wrong. Please try again.",
   },
 } as const
-
-const INDUSTRIES: { value: string; label: Record<Lang, string> }[] = [
-  { value: "it", label: { uz: "IT va raqamli texnologiyalar", ru: "ИТ и цифровые технологии", en: "IT and Digital Technologies" } },
-  { value: "agriculture", label: { uz: "Qishloq xo‘jaligi", ru: "Сельское хозяйство", en: "Agriculture" } },
-  { value: "energy", label: { uz: "Energetika", ru: "Энергетика", en: "Energy" } },
-  { value: "construction", label: { uz: "Qurilish", ru: "Строительство", en: "Construction" } },
-  { value: "trade", label: { uz: "Savdo va xizmatlar", ru: "Торговля и услуги", en: "Trade and Services" } },
-  { value: "manufacturing", label: { uz: "Sanoat / ishlab chiqarish", ru: "Промышленность / производство", en: "Industry / Manufacturing" } },
-  { value: "healthcare", label: { uz: "Sog‘liqni saqlash", ru: "Здравоохранение", en: "Healthcare" } },
-  { value: "logistics", label: { uz: "Logistika", ru: "Логистика", en: "Logistics" } },
-  { value: "textile", label: { uz: "To‘qimachilik", ru: "Текстиль", en: "Textile" } },
-  { value: "food", label: { uz: "Oziq-ovqat sanoati", ru: "Пищевая промышленность", en: "Food Industry" } },
-  { value: "other", label: { uz: "Boshqa", ru: "Другое", en: "Other" } },
-]
 
 type Theme = "light" | "dark"
 
@@ -123,25 +132,73 @@ export default function RegistrationPage() {
   const [phone, setPhone] = React.useState("")
   const [company, setCompany] = React.useState("")
   const [position, setPosition] = React.useState("")
-  const [industries, setIndustries] = React.useState<string[]>([])
+  const [industries, setIndustries] = React.useState<IndustryValue[]>([])
   const [consent, setConsent] = React.useState(false)
+  const [submitted, setSubmitted] = React.useState(false)
+  const [pending, startTransition] = React.useTransition()
 
-  const canSubmit =
-    fullName.trim() &&
-    phone.trim() &&
-    company.trim() &&
-    position.trim() &&
-    industries.length > 0 &&
-    consent
+  type FieldError = string | null
+  const errors = React.useMemo(() => {
+    if (!submitted) {
+      return {
+        fullName: null as FieldError,
+        phone: null as FieldError,
+        company: null as FieldError,
+        position: null as FieldError,
+        industries: null as FieldError,
+        consent: null as FieldError,
+      }
+    }
+    return {
+      fullName: fullName.trim() ? null : t.errorRequired,
+      phone: phone.trim() ? null : t.errorRequired,
+      company: company.trim() ? null : t.errorRequired,
+      position: position.trim() ? null : t.errorRequired,
+      industries: industries.length > 0 ? null : t.errorIndustries,
+      consent: consent ? null : t.errorConsent,
+    }
+  }, [submitted, fullName, phone, company, position, industries, consent, t])
 
-  function toggleIndustry(value: string, checked: boolean) {
+  function toggleIndustry(value: IndustryValue, checked: boolean) {
     setIndustries((prev) =>
       checked ? [...prev, value] : prev.filter((v) => v !== value)
     )
   }
 
+  function resetForm() {
+    setFullName("")
+    setPhone("")
+    setCompany("")
+    setPosition("")
+    setIndustries([])
+    setConsent(false)
+    setSubmitted(false)
+  }
+
   function handleSubmit(event: React.SyntheticEvent<HTMLFormElement>) {
     event.preventDefault()
+    setSubmitted(true)
+
+    const parsed = submissionSchema.safeParse({
+      fullName,
+      phone,
+      company,
+      position,
+      industries,
+      consent,
+      language: lang,
+    })
+    if (!parsed.success) return
+
+    startTransition(async () => {
+      const result = await submitRegistration(parsed.data)
+      if (result.ok) {
+        toast.success(t.successTitle, { description: t.successDescription })
+        resetForm()
+      } else {
+        toast.error("error" in result ? result.error : t.serverError)
+      }
+    })
   }
 
   return (
@@ -191,8 +248,14 @@ export default function RegistrationPage() {
           </CardHeader>
 
           <CardContent>
-            <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-              <Field id="fullName" label={t.fullName}>
+            <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
+              <Field
+                id="fullName"
+                label={t.fullName}
+                required
+                requiredLabel={t.requiredMark}
+                error={errors.fullName}
+              >
                 <Input
                   id="fullName"
                   type="text"
@@ -200,11 +263,18 @@ export default function RegistrationPage() {
                   placeholder={t.fullNamePlaceholder}
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  required
+                  aria-invalid={!!errors.fullName}
+                  aria-describedby={errors.fullName ? "fullName-error" : undefined}
                 />
               </Field>
 
-              <Field id="phone" label={t.phone}>
+              <Field
+                id="phone"
+                label={t.phone}
+                required
+                requiredLabel={t.requiredMark}
+                error={errors.phone}
+              >
                 <Input
                   id="phone"
                   type="tel"
@@ -213,11 +283,18 @@ export default function RegistrationPage() {
                   placeholder={t.phonePlaceholder}
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  required
+                  aria-invalid={!!errors.phone}
+                  aria-describedby={errors.phone ? "phone-error" : undefined}
                 />
               </Field>
 
-              <Field id="company" label={t.company}>
+              <Field
+                id="company"
+                label={t.company}
+                required
+                requiredLabel={t.requiredMark}
+                error={errors.company}
+              >
                 <Input
                   id="company"
                   type="text"
@@ -225,11 +302,18 @@ export default function RegistrationPage() {
                   placeholder={t.companyPlaceholder}
                   value={company}
                   onChange={(e) => setCompany(e.target.value)}
-                  required
+                  aria-invalid={!!errors.company}
+                  aria-describedby={errors.company ? "company-error" : undefined}
                 />
               </Field>
 
-              <Field id="position" label={t.position}>
+              <Field
+                id="position"
+                label={t.position}
+                required
+                requiredLabel={t.requiredMark}
+                error={errors.position}
+              >
                 <Input
                   id="position"
                   type="text"
@@ -237,18 +321,31 @@ export default function RegistrationPage() {
                   placeholder={t.positionPlaceholder}
                   value={position}
                   onChange={(e) => setPosition(e.target.value)}
-                  required
+                  aria-invalid={!!errors.position}
+                  aria-describedby={errors.position ? "position-error" : undefined}
                 />
               </Field>
 
-              <fieldset className="flex flex-col gap-3">
+              <fieldset
+                className="flex flex-col gap-3"
+                aria-invalid={!!errors.industries}
+                aria-describedby={errors.industries ? "industries-error" : undefined}
+              >
                 <div className="flex items-baseline justify-between gap-2">
-                  <legend className="text-sm font-medium">{t.industries}</legend>
+                  <legend className="text-sm font-medium">
+                    {t.industries}
+                    <RequiredStar label={t.requiredMark} />
+                  </legend>
                   <span className="text-xs text-muted-foreground">
                     {t.industriesHint}
                   </span>
                 </div>
-                <div className="grid grid-cols-1 gap-1 rounded-3xl bg-muted/40 p-2 sm:grid-cols-2">
+                <div
+                  className={cn(
+                    "grid grid-cols-1 gap-1 rounded-3xl bg-muted/40 p-2 sm:grid-cols-2",
+                    errors.industries && "ring-1 ring-destructive/40"
+                  )}
+                >
                   {INDUSTRIES.map((item) => {
                     const checked = industries.includes(item.value)
                     const id = `industry-${item.value}`
@@ -267,7 +364,7 @@ export default function RegistrationPage() {
                           id={id}
                           checked={checked}
                           onCheckedChange={(value) =>
-                            toggleIndustry(item.value, value === true)
+                            toggleIndustry(item.value as IndustryValue, value === true)
                           }
                         />
                         <span className="leading-snug">{item.label[lang]}</span>
@@ -275,26 +372,42 @@ export default function RegistrationPage() {
                     )
                   })}
                 </div>
+                {errors.industries && (
+                  <FieldError id="industries-error">{errors.industries}</FieldError>
+                )}
               </fieldset>
 
-              <label
-                htmlFor="consent"
-                className="flex cursor-pointer items-start gap-3 rounded-2xl bg-muted/40 p-4 text-sm leading-relaxed text-muted-foreground transition-colors hover:bg-muted/60"
-              >
-                <Checkbox
-                  id="consent"
-                  checked={consent}
-                  onCheckedChange={(value) => setConsent(value === true)}
-                  className="mt-0.5"
-                />
-                <span>{t.consent}</span>
-              </label>
+              <div className="flex flex-col gap-2">
+                <label
+                  htmlFor="consent"
+                  className={cn(
+                    "flex cursor-pointer items-start gap-3 rounded-2xl bg-muted/40 p-4 text-sm leading-relaxed text-muted-foreground transition-colors hover:bg-muted/60",
+                    errors.consent && "ring-1 ring-destructive/40"
+                  )}
+                >
+                  <Checkbox
+                    id="consent"
+                    checked={consent}
+                    onCheckedChange={(value) => setConsent(value === true)}
+                    aria-invalid={!!errors.consent}
+                    aria-describedby={errors.consent ? "consent-error" : undefined}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    {t.consent}
+                    <RequiredStar label={t.requiredMark} />
+                  </span>
+                </label>
+                {errors.consent && (
+                  <FieldError id="consent-error">{errors.consent}</FieldError>
+                )}
+              </div>
 
               <Button
                 type="submit"
                 size="lg"
                 className="mt-2 h-12 w-full text-base font-semibold"
-                disabled={!canSubmit}
+                disabled={pending}
               >
                 {t.submit}
               </Button>
@@ -313,17 +426,49 @@ export default function RegistrationPage() {
 function Field({
   id,
   label,
+  required,
+  requiredLabel,
+  error,
   children,
 }: {
   id: string
   label: string
+  required?: boolean
+  requiredLabel?: string
+  error?: string | null
   children: React.ReactNode
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <Label htmlFor={id}>{label}</Label>
+      <Label htmlFor={id}>
+        {label}
+        {required && <RequiredStar label={requiredLabel} />}
+      </Label>
       {children}
+      {error && <FieldError id={`${id}-error`}>{error}</FieldError>}
     </div>
+  )
+}
+
+function RequiredStar({ label }: { label?: string }) {
+  return (
+    <span aria-label={label} className="ml-1 text-destructive" aria-hidden={!label}>
+      *
+    </span>
+  )
+}
+
+function FieldError({
+  id,
+  children,
+}: {
+  id: string
+  children: React.ReactNode
+}) {
+  return (
+    <p id={id} role="alert" className="text-xs font-medium text-destructive">
+      {children}
+    </p>
   )
 }
 
