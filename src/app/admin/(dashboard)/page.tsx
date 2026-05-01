@@ -45,7 +45,7 @@ export default async function AdminDashboardPage() {
     })
   })
   const industryData = Array.from(industryCounts, ([value, count]) => ({
-    industry: industryLabel(value, "en").split(" ")[0],
+    industry: value === "it" ? "IT" : value.charAt(0).toUpperCase() + value.slice(1),
     count,
   }))
 

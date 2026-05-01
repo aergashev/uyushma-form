@@ -86,7 +86,7 @@ export function SubmissionRowActions({ id, label }: { id: string; label: string 
         <AlertDialogHeader>
           <AlertDialogTitle>Delete this submission?</AlertDialogTitle>
           <AlertDialogDescription>
-            This permanently removes {label}&rsquo;s submission. This action cannot be undone.
+            This permanently removes {label}'s submission. This action cannot be undone.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

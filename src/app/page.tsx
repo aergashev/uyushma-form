@@ -7,6 +7,7 @@ import { toast } from "sonner"
 
 import { submitRegistration } from "@/app/actions"
 import { Button } from "@/components/ui/button"
+import { isValidPhoneNumber } from "libphonenumber-js"
 import {
   Card,
   CardContent,
@@ -44,8 +45,7 @@ const COPY = {
     submit: "Ariza yuborish",
     footer: "O‘zbekiston Milliy Iqtisodiy Hamkorlik Uyushmasi",
     requiredMark: "majburiy maydon",
-    errorRequired: "Maydon to‘ldirilishi shart",
-    errorIndustries: "Kamida bitta yo‘nalishni tanlang",
+    errorRequired: "Maydon to‘ldirilishi shart",    errorPhone: "Telefon raqami noto'g'ri",    errorIndustries: "Kamida bitta yo‘nalishni tanlang",
     errorConsent: "Davom etish uchun roziligingizni tasdiqlang",
     successTitle: "Arizangiz qabul qilindi",
     successDescription: "Tashkilotchilar siz bilan tez orada bog‘lanadi.",
@@ -73,6 +73,7 @@ const COPY = {
     footer: "Ассоциация национального экономического сотрудничества Узбекистана",
     requiredMark: "обязательное поле",
     errorRequired: "Обязательное поле",
+    errorPhone: "Неверный номер телефона",
     errorIndustries: "Выберите хотя бы одну отрасль",
     errorConsent: "Подтвердите согласие, чтобы продолжить",
     successTitle: "Заявка отправлена",
@@ -101,6 +102,7 @@ const COPY = {
     footer: "Association of National Economic Cooperation of Uzbekistan",
     requiredMark: "required field",
     errorRequired: "This field is required",
+    errorPhone: "Invalid phone number",
     errorIndustries: "Please select at least one industry",
     errorConsent: "Please confirm your consent to continue",
     successTitle: "Application submitted",
@@ -151,7 +153,11 @@ export default function RegistrationPage() {
     }
     return {
       fullName: fullName.trim() ? null : t.errorRequired,
-      phone: phone.trim() ? null : t.errorRequired,
+      phone: !phone.trim()
+        ? t.errorRequired
+        : !isValidPhoneNumber(phone)
+        ? t.errorPhone
+        : null,
       company: company.trim() ? null : t.errorRequired,
       position: position.trim() ? null : t.errorRequired,
       industries: industries.length > 0 ? null : t.errorIndustries,
@@ -196,7 +202,7 @@ export default function RegistrationPage() {
         toast.success(t.successTitle, { description: t.successDescription })
         resetForm()
       } else {
-        toast.error("error" in result ? result.error : t.serverError)
+        toast.error(t.serverError)
       }
     })
   }
